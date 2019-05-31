@@ -15,7 +15,7 @@ import (
 	"github.com/cnlh/nps/lib/version"
 	"github.com/cnlh/nps/vender/github.com/astaxie/beego/logs"
 	"github.com/getlantern/systray"
-	"github.com/hanxi/lemonade/icon"
+	"github.com/hanxi/nps/cmd/npc_windows/icon"
 	"github.com/monochromegane/conflag"
 	"github.com/skratchdot/open-golang/open"
 )
@@ -111,7 +111,7 @@ func getConfPath() (string, error) {
 
 	if os.IsNotExist(err) {
 		os.MkdirAll(filepath.Dir(confFile), os.ModePerm)
-		s := "#server='xx.com:8080'\r\n#vkey='xxxx"
+		s := "#server='xx.com:8080'\r\n#vkey='xxxx'\r\n"
 		ioutil.WriteFile(confFile, []byte(s), os.ModePerm)
 	}
 
