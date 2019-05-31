@@ -9,7 +9,7 @@ while read -r os arch; do
 
     env CGO_ENABLED=0 GOOS=${os} GOARCH=${arch} go build -o ./nps cmd/nps/nps.go
     out_name=out/${os}_${arch}_server.tar.gz
-    tar -zcf ${out_name} nps conf
+    tar -zcf ${out_name} nps conf web
     echo ${out_name} ok
     rm -f npc nps
 done << EOF
