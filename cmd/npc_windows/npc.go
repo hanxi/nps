@@ -6,18 +6,20 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ProtonMail/go-autostart"
-	"github.com/cnlh/nps/client"
 	"github.com/cnlh/nps/lib/common"
 	"github.com/cnlh/nps/lib/daemon"
 	"github.com/cnlh/nps/lib/version"
 	"github.com/cnlh/nps/vender/github.com/astaxie/beego/logs"
 	"github.com/getlantern/systray"
+	ps "github.com/hanxi/go-powershell"
+	"github.com/hanxi/go-powershell/backend"
+	"github.com/hanxi/nps/client"
 	"github.com/hanxi/nps/cmd/npc_windows/icon"
 	"github.com/monochromegane/conflag"
-	"github.com/skratchdot/open-golang/open"
 )
 
 var (
@@ -33,7 +35,7 @@ var (
 var confFile = "npc.toml"
 var flags *flag.FlagSet
 
-func updateTips() {
+func updateTips(serverAddr string, verifyKey string) {
 	tips := fmt.Sprintf("server='%s'\nvkey='%s'", serverAddr, verifyKey)
 	systray.SetTooltip(tips)
 }
@@ -41,7 +43,7 @@ func updateTips() {
 func onReady() {
 	systray.SetIcon(icon.Data)
 	systray.SetTitle("npc")
-	updateTips()
+	updateTips(serverAddr, verifyKey)
 
 	mChecked := systray.AddMenuItem("Auto Startup", "Auto Startup npc on boot")
 	filename := os.Args[0] // get command line first parameter
@@ -54,7 +56,7 @@ func onReady() {
 		mChecked.Check()
 	}
 
-	mOpenConfig := systray.AddMenuItem("OpenConfig", "Open npc Config file")
+	mEditConfig := systray.AddMenuItem("EditConfig", "Edit npc Config")
 
 	go func() {
 		for {
@@ -73,11 +75,17 @@ func onReady() {
 						mChecked.Check()
 					}
 				}
-			case <-mOpenConfig.ClickedCh:
+			case <-mEditConfig.ClickedCh:
 				{
-					confPath, err := getConfPath()
-					if err == nil {
-						open.Run(filepath.Dir(confPath))
+					configLine, ok := inputBox("Input server and vkey", "Like this: -server=home.hanxi.info:2888 -vkey=pu74elp8h3v7ysaw", "")
+					logs.Info(configLine)
+					if ok {
+						err := flags.Parse(strings.Split(configLine, " "))
+						if err != nil {
+							logs.Error("input error:%s", err.Error())
+							return
+						}
+						writeConf()
 					}
 				}
 			}
@@ -91,6 +99,7 @@ func onReady() {
 	}()
 
 	go start()
+
 }
 
 func onExit() {
@@ -99,7 +108,6 @@ func onExit() {
 
 func main() {
 	flags = getFlags()
-
 	systray.Run(onReady, onExit)
 }
 
@@ -129,7 +137,15 @@ func getFlags() *flag.FlagSet {
 	return flags
 }
 
-func start() {
+func reloadConf() (string, string) {
+	var (
+		server string
+		vkey   string
+	)
+	flags := flag.NewFlagSet("npc-runtime", flag.ContinueOnError)
+	flags.StringVar(&server, "server", "", "Server addr (ip:port)")
+	flags.StringVar(&vkey, "vkey", "", "Authentication key")
+
 	confPath, err := getConfPath()
 	if err == nil {
 		if confArgs, err := conflag.ArgsFrom(confPath); err == nil {
@@ -138,11 +154,14 @@ func start() {
 			logs.Info("parse error:%s", err.Error())
 		}
 	}
+	return server, vkey
+}
 
+func start() {
 	if len(os.Args) > 1 {
-		err = flags.Parse(os.Args[1:])
+		err := flags.Parse(os.Args[1:])
 		if err != nil {
-			logs.Error("args error.")
+			logs.Error("args error:%s", err.Error())
 			return
 		}
 	}
@@ -159,11 +178,44 @@ func start() {
 	logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, version.GetVersion())
 	go func() {
 		for {
-			updateTips()
-			logs.Info("serverAddr:%s, verifyKey:%s", serverAddr, verifyKey)
-			client.NewRPClient(serverAddr, verifyKey, connType, proxyURL, nil).Start()
+			server, vkey := reloadConf()
+			updateTips(server, vkey)
+			logs.Info("server:%s, vkey:%s", server, vkey)
+			client.NewRPClient(server, vkey, connType, proxyURL, nil).Start()
 			logs.Info("It will be reconnected in five seconds")
 			time.Sleep(time.Second * 5)
 		}
 	}()
+}
+
+// inputBox displays a dialog box, returning the entered value and a bool for success
+func inputBox(title, message, defaultAnswer string) (string, bool) {
+	shell, err := ps.New(&backend.Local{})
+	if err != nil {
+		panic(err)
+	}
+	defer shell.Exit()
+
+	out, _, err := shell.Execute(`
+		[void][Reflection.Assembly]::LoadWithPartialName('Microsoft.VisualBasic')
+		$title = '` + title + `'
+		$msg = '` + message + `'
+		$default = '` + defaultAnswer + `'
+		$answer = [Microsoft.VisualBasic.Interaction]::InputBox($msg, $title, $default)
+		Write-Output $answer
+		`)
+	// FIXME: if cancel button is pressed in dialog, we should return false
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimSpace(string(out)), true
+}
+
+func writeConf() {
+	confPath, err := getConfPath()
+	if err != nil {
+		return
+	}
+	s := fmt.Sprintf("server='%s'\r\nvkey='%s'\r\n", serverAddr, verifyKey)
+	ioutil.WriteFile(confPath, []byte(s), os.ModePerm)
 }

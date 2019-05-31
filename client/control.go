@@ -5,14 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/cnlh/nps/lib/common"
-	"github.com/cnlh/nps/lib/config"
-	"github.com/cnlh/nps/lib/conn"
-	"github.com/cnlh/nps/lib/crypt"
-	"github.com/cnlh/nps/lib/version"
-	"github.com/cnlh/nps/vender/github.com/astaxie/beego/logs"
-	"github.com/cnlh/nps/vender/github.com/xtaci/kcp"
-	"github.com/cnlh/nps/vender/golang.org/x/net/proxy"
 	"io/ioutil"
 	"log"
 	"math"
@@ -26,6 +18,15 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cnlh/nps/lib/common"
+	"github.com/cnlh/nps/lib/config"
+	"github.com/cnlh/nps/lib/conn"
+	"github.com/cnlh/nps/lib/crypt"
+	"github.com/cnlh/nps/lib/version"
+	"github.com/cnlh/nps/vender/github.com/astaxie/beego/logs"
+	"github.com/cnlh/nps/vender/github.com/xtaci/kcp"
+	"github.com/cnlh/nps/vender/golang.org/x/net/proxy"
 )
 
 func GetTaskStatus(path string) {
@@ -233,7 +234,7 @@ func NewConn(tp string, vkey string, server string, connType string, proxyUrl st
 		return nil, err
 	} else if s == common.VERIFY_EER {
 		logs.Error("Validation key %s incorrect", vkey)
-		os.Exit(0)
+		return nil, errors.New("Validation key")
 	}
 	if _, err := c.Write([]byte(connType)); err != nil {
 		return nil, err
@@ -379,7 +380,7 @@ func sendP2PTestMsg(localConn *net.UDPConn, remoteAddr1, remoteAddr2, remoteAddr
 		ip := common.GetIpByAddr(remoteAddr2)
 		go func() {
 			ports := getRandomPortArr(common.GetPortByAddr(remoteAddr3), common.GetPortByAddr(remoteAddr3)+interval*50)
-			for i := 0; i <= 50; i ++ {
+			for i := 0; i <= 50; i++ {
 				go func(port int) {
 					trueAddress := ip + ":" + strconv.Itoa(port)
 					logs.Trace("try send test packet to target %s", trueAddress)
